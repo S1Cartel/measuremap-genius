@@ -1,9 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import mapboxgl from 'mapbox-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
-import * as turf from '@turf/turf';
 import type { Measurement } from '../pages/Index';
-import type { Feature, Geometry, GeoJSON } from 'geojson';
 
 interface MapProps {
   isDrawing: boolean;
@@ -11,179 +7,120 @@ interface MapProps {
 }
 
 const Map = ({ isDrawing, onMeasurementComplete }: MapProps) => {
-  const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
-  const draw = useRef<number[][]>([]);
-  const [mapboxToken, setMapboxToken] = useState('');
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const contextRef = useRef<CanvasRenderingContext2D | null>(null);
+  const points = useRef<[number, number][]>([]);
+  const [isDrawingActive, setIsDrawingActive] = useState(false);
 
   useEffect(() => {
-    if (!mapContainer.current) return;
+    if (!canvasRef.current) return;
 
-    // Initialize map
-    mapboxgl.accessToken = mapboxToken || 'YOUR_MAPBOX_TOKEN';
+    const canvas = canvasRef.current;
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+
+    const context = canvas.getContext('2d');
+    if (!context) return;
+
+    context.strokeStyle = '#2563eb';
+    context.lineWidth = 2;
+    contextRef.current = context;
+  }, []);
+
+  const calculateArea = (points: [number, number][]) => {
+    if (points.length < 3) return 0;
+    let area = 0;
+    for (let i = 0; i < points.length; i++) {
+      const j = (i + 1) % points.length;
+      area += points[i][0] * points[j][1];
+      area -= points[j][0] * points[i][1];
+    }
+    return Math.abs(area / 2);
+  };
+
+  const calculatePerimeter = (points: [number, number][]) => {
+    if (points.length < 2) return 0;
+    let perimeter = 0;
+    for (let i = 0; i < points.length; i++) {
+      const j = (i + 1) % points.length;
+      const dx = points[j][0] - points[i][0];
+      const dy = points[j][1] - points[i][1];
+      perimeter += Math.sqrt(dx * dx + dy * dy);
+    }
+    return perimeter;
+  };
+
+  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing || !contextRef.current || !canvasRef.current) return;
+
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    points.current.push([x, y]);
+
+    const ctx = contextRef.current;
     
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/satellite-v9',
-      center: [-74.5, 40],
-      zoom: 18,
-      pitch: 0,
-    });
+    // Draw point
+    ctx.beginPath();
+    ctx.arc(x, y, 4, 0, 2 * Math.PI);
+    ctx.fillStyle = '#2563eb';
+    ctx.fill();
 
-    // Add navigation controls
-    map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
+    // Draw line
+    if (points.current.length > 1) {
+      const prevPoint = points.current[points.current.length - 2];
+      ctx.beginPath();
+      ctx.moveTo(prevPoint[0], prevPoint[1]);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+    }
 
-    return () => {
-      map.current?.remove();
-    };
-  }, [mapboxToken]);
+    // Check if polygon should be closed
+    if (points.current.length >= 3) {
+      const firstPoint = points.current[0];
+      const distance = Math.sqrt(
+        Math.pow(x - firstPoint[0], 2) + Math.pow(y - firstPoint[1], 2)
+      );
 
-  useEffect(() => {
-    if (!map.current) return;
+      if (distance < 20) {
+        // Close the polygon
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(firstPoint[0], firstPoint[1]);
+        ctx.stroke();
 
-    const handleClick = (e: mapboxgl.MapMouseEvent) => {
-      if (!isDrawing) return;
+        // Calculate measurements (using pixel values as units)
+        const area = calculateArea(points.current);
+        const perimeter = calculatePerimeter(points.current);
 
-      const coordinates = e.lngLat;
-      draw.current.push([coordinates.lng, coordinates.lat]);
-
-      // Draw point
-      const pointFeature: Feature = {
-        type: 'Feature',
-        geometry: {
-          type: 'Point',
-          coordinates: [coordinates.lng, coordinates.lat],
-        },
-        properties: {},
-      };
-
-      if (!map.current?.getSource('points')) {
-        map.current?.addSource('points', {
-          type: 'geojson',
-          data: {
-            type: 'FeatureCollection',
-            features: [pointFeature],
-          } as GeoJSON,
+        onMeasurementComplete({
+          area,
+          perimeter,
+          coordinates: points.current,
         });
 
-        map.current?.addLayer({
-          id: 'points',
-          type: 'circle',
-          source: 'points',
-          paint: {
-            'circle-radius': 6,
-            'circle-color': '#fff',
-            'circle-stroke-width': 2,
-            'circle-stroke-color': '#2563eb',
-          },
-        });
-      } else {
-        const source = map.current?.getSource('points') as mapboxgl.GeoJSONSource;
-        const currentData = (source.serialize().data as GeoJSON);
-        const features = currentData.features || [];
-        source.setData({
-          type: 'FeatureCollection',
-          features: [...features, pointFeature],
-        } as GeoJSON);
+        // Reset
+        points.current = [];
+        setIsDrawingActive(false);
       }
-
-      // Draw line if we have at least 2 points
-      if (draw.current.length > 1) {
-        const lineFeature: Feature = {
-          type: 'Feature',
-          geometry: {
-            type: 'LineString',
-            coordinates: draw.current,
-          },
-          properties: {},
-        };
-
-        if (!map.current?.getSource('lines')) {
-          map.current?.addSource('lines', {
-            type: 'geojson',
-            data: {
-              type: 'FeatureCollection',
-              features: [lineFeature],
-            } as GeoJSON,
-          });
-
-          map.current?.addLayer({
-            id: 'lines',
-            type: 'line',
-            source: 'lines',
-            paint: {
-              'line-color': '#2563eb',
-              'line-width': 2,
-            },
-          });
-        } else {
-          const source = map.current?.getSource('lines') as mapboxgl.GeoJSONSource;
-          source.setData({
-            type: 'FeatureCollection',
-            features: [lineFeature],
-          } as GeoJSON);
-        }
-      }
-
-      // Complete polygon if we have at least 3 points and clicked near start
-      if (draw.current.length >= 3) {
-        const start = draw.current[0];
-        const end = [coordinates.lng, coordinates.lat];
-        const distance = turf.distance(start, end, { units: 'meters' });
-
-        if (distance < 5) {
-          draw.current.push(start);
-          const polygon = turf.polygon([draw.current]);
-          const area = turf.area(polygon);
-          const perimeter = turf.length(turf.lineString(draw.current), { units: 'meters' });
-
-          onMeasurementComplete({
-            area,
-            perimeter,
-            coordinates: draw.current,
-          });
-
-          // Reset drawing
-          draw.current = [];
-          (map.current?.getSource('points') as mapboxgl.GeoJSONSource)?.setData({
-            type: 'FeatureCollection',
-            features: [],
-          } as GeoJSON);
-          (map.current?.getSource('lines') as mapboxgl.GeoJSONSource)?.setData({
-            type: 'FeatureCollection',
-            features: [],
-          } as GeoJSON);
-        }
-      }
-    };
-
-    map.current.on('click', handleClick);
-
-    return () => {
-      map.current?.off('click', handleClick);
-    };
-  }, [isDrawing, onMeasurementComplete]);
+    }
+  };
 
   return (
-    <>
-      {!mapboxToken && (
-        <div className="absolute top-4 left-4 right-4 z-10 bg-white p-4 rounded-lg shadow">
-          <input
-            type="text"
-            placeholder="Enter your Mapbox token"
-            className="w-full p-2 border rounded"
-            onChange={(e) => setMapboxToken(e.target.value)}
-          />
-          <p className="text-sm text-gray-500 mt-2">
-            Get your token at{' '}
-            <a href="https://mapbox.com" target="_blank" rel="noopener noreferrer" className="text-blue-500">
-              mapbox.com
-            </a>
+    <div className="relative w-full h-full bg-gray-100">
+      <canvas
+        ref={canvasRef}
+        className="w-full h-full border border-gray-200"
+        onClick={handleCanvasClick}
+      />
+      {!isDrawing && (
+        <div className="absolute top-4 left-4 right-4 bg-white p-4 rounded-lg shadow text-center">
+          <p className="text-gray-600">
+            Click "Start Measuring" to begin drawing a polygon.
           </p>
         </div>
       )}
-      <div ref={mapContainer} className="w-full h-full" />
-    </>
+    </div>
   );
 };
 
