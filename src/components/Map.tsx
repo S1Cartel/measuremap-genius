@@ -2,15 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import Map from 'ol/Map';
 import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
-import OSM from 'ol/source/OSM';
-import { Draw } from 'ol/interaction';
-import VectorSource from 'ol/source/Vector';
 import VectorLayer from 'ol/layer/Vector';
+import OSM from 'ol/source/OSM';
+import VectorSource from 'ol/source/Vector';
+import { Draw } from 'ol/interaction';
 import { Polygon } from 'ol/geom';
 import { getArea, getLength } from 'ol/sphere';
+import XYZ from 'ol/source/XYZ';
+import { Zoom } from 'ol/control';
 import 'ol/ol.css';
 import type { Measurement } from '../pages/Index';
-import { Zoom } from 'ol/control';
 
 interface MapProps {
   isDrawing: boolean;
@@ -31,12 +32,22 @@ const MapComponent = ({ isDrawing, onMeasurementComplete }: MapProps) => {
       source: vectorSource.current,
     });
 
+    // Add OSM property boundaries layer
+    const osmParcelLayer = new TileLayer({
+      source: new XYZ({
+        url: 'https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png',
+        attributions: ['© OpenStreetMap contributors'],
+      }),
+      opacity: 0.7,
+    });
+
     const map = new Map({
       target: mapRef.current,
       layers: [
         new TileLayer({
           source: new OSM(),
         }),
+        osmParcelLayer,
         vectorLayer,
       ],
       view: new View({
@@ -116,7 +127,7 @@ const MapComponent = ({ isDrawing, onMeasurementComplete }: MapProps) => {
       {!isDrawing && (
         <div className="absolute top-4 left-4 right-4 bg-white p-4 rounded-lg shadow text-center">
           <p className="text-gray-600">
-            Click "Start Measuring" to begin drawing a polygon on the map.
+            Click "Start Measuring" to begin drawing a polygon on the map. Property boundaries are shown as an overlay.
           </p>
         </div>
       )}
