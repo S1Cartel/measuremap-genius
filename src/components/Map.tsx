@@ -3,6 +3,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import * as turf from '@turf/turf';
 import type { Measurement } from '../pages/Index';
+import type { Feature, Geometry, GeoJSON } from 'geojson';
 
 interface MapProps {
   isDrawing: boolean;
@@ -12,7 +13,7 @@ interface MapProps {
 const Map = ({ isDrawing, onMeasurementComplete }: MapProps) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
-  const draw = useRef<any[]>([]);
+  const draw = useRef<number[][]>([]);
   const [mapboxToken, setMapboxToken] = useState('');
 
   useEffect(() => {
@@ -47,7 +48,7 @@ const Map = ({ isDrawing, onMeasurementComplete }: MapProps) => {
       draw.current.push([coordinates.lng, coordinates.lat]);
 
       // Draw point
-      const pointFeature = {
+      const pointFeature: Feature = {
         type: 'Feature',
         geometry: {
           type: 'Point',
@@ -62,7 +63,7 @@ const Map = ({ isDrawing, onMeasurementComplete }: MapProps) => {
           data: {
             type: 'FeatureCollection',
             features: [pointFeature],
-          },
+          } as GeoJSON,
         });
 
         map.current?.addLayer({
@@ -78,16 +79,17 @@ const Map = ({ isDrawing, onMeasurementComplete }: MapProps) => {
         });
       } else {
         const source = map.current?.getSource('points') as mapboxgl.GeoJSONSource;
-        const features = source?._data?.features || [];
-        source?.setData({
+        const currentData = (source.serialize().data as GeoJSON);
+        const features = currentData.features || [];
+        source.setData({
           type: 'FeatureCollection',
           features: [...features, pointFeature],
-        });
+        } as GeoJSON);
       }
 
       // Draw line if we have at least 2 points
       if (draw.current.length > 1) {
-        const lineFeature = {
+        const lineFeature: Feature = {
           type: 'Feature',
           geometry: {
             type: 'LineString',
@@ -102,7 +104,7 @@ const Map = ({ isDrawing, onMeasurementComplete }: MapProps) => {
             data: {
               type: 'FeatureCollection',
               features: [lineFeature],
-            },
+            } as GeoJSON,
           });
 
           map.current?.addLayer({
@@ -116,10 +118,10 @@ const Map = ({ isDrawing, onMeasurementComplete }: MapProps) => {
           });
         } else {
           const source = map.current?.getSource('lines') as mapboxgl.GeoJSONSource;
-          source?.setData({
+          source.setData({
             type: 'FeatureCollection',
             features: [lineFeature],
-          });
+          } as GeoJSON);
         }
       }
 
@@ -143,14 +145,14 @@ const Map = ({ isDrawing, onMeasurementComplete }: MapProps) => {
 
           // Reset drawing
           draw.current = [];
-          map.current?.getSource('points')?.setData({
+          (map.current?.getSource('points') as mapboxgl.GeoJSONSource)?.setData({
             type: 'FeatureCollection',
             features: [],
-          });
-          map.current?.getSource('lines')?.setData({
+          } as GeoJSON);
+          (map.current?.getSource('lines') as mapboxgl.GeoJSONSource)?.setData({
             type: 'FeatureCollection',
             features: [],
-          });
+          } as GeoJSON);
         }
       }
     };
