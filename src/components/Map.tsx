@@ -10,6 +10,7 @@ import { Polygon } from 'ol/geom';
 import { getArea, getLength } from 'ol/sphere';
 import 'ol/ol.css';
 import type { Measurement } from '../pages/Index';
+import { Zoom } from 'ol/control';
 
 interface MapProps {
   isDrawing: boolean;
@@ -42,6 +43,11 @@ const MapComponent = ({ isDrawing, onMeasurementComplete }: MapProps) => {
         center: [0, 0],
         zoom: 2,
       }),
+      controls: [
+        new Zoom({
+          className: 'absolute bottom-16 right-4',
+        }),
+      ],
     });
 
     mapInstance.current = map;
