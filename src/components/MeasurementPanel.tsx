@@ -16,8 +16,8 @@ const MeasurementPanel = ({ measurement }: MeasurementPanelProps) => {
     doc.text('Roof Measurement Report', 20, 20);
     
     doc.setFontSize(12);
-    doc.text(`Area: ${measurement.area.toFixed(2)} square meters`, 20, 40);
-    doc.text(`Perimeter: ${measurement.perimeter.toFixed(2)} meters`, 20, 50);
+    doc.text(`Area: ${(measurement.area / 1000000).toFixed(2)} square kilometers`, 20, 40);
+    doc.text(`Perimeter: ${(measurement.perimeter / 1000).toFixed(2)} kilometers`, 20, 50);
     
     doc.save('roof-measurement.pdf');
   };
@@ -32,14 +32,14 @@ const MeasurementPanel = ({ measurement }: MeasurementPanelProps) => {
             <div className="bg-gray-50 p-4 rounded-lg">
               <h3 className="text-sm font-medium text-gray-500">Area</h3>
               <p className="text-2xl font-bold text-gray-900">
-                {measurement.area.toFixed(2)} m²
+                {(measurement.area / 1000000).toFixed(2)} km²
               </p>
             </div>
             
             <div className="bg-gray-50 p-4 rounded-lg">
               <h3 className="text-sm font-medium text-gray-500">Perimeter</h3>
               <p className="text-2xl font-bold text-gray-900">
-                {measurement.perimeter.toFixed(2)} m
+                {(measurement.perimeter / 1000).toFixed(2)} km
               </p>
             </div>
           </div>
