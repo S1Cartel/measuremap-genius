@@ -3,12 +3,14 @@ import Map from '../components/Map';
 import MeasurementPanel from '../components/MeasurementPanel';
 import MapControls from '../components/MapControls';
 import { Button } from '@/components/ui/button';
-import { toast } from '@/components/ui/use-toast';
+import { toast } from '@/hooks/use-toast';
 
 export interface Measurement {
   area: number;
   perimeter: number;
   coordinates: number[][];
+  centerPoint?: [number, number];
+  location?: string;
 }
 
 const Index = () => {
@@ -20,12 +22,12 @@ const Index = () => {
     setIsDrawing(false);
     toast({
       title: "Measurement Complete",
-      description: `Area: ${data.area.toFixed(2)} sq meters`,
+      description: `Area: ${(data.area / 10000).toFixed(2)} hectares`,
     });
   };
 
   return (
-    <div className="flex h-screen bg-gray-100">
+    <div className="flex h-screen bg-gradient-to-br from-gray-900 via-black to-blue-900">
       <div className="relative flex-1">
         <Map 
           isDrawing={isDrawing} 

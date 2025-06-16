@@ -10,8 +10,11 @@ import { Polygon } from 'ol/geom';
 import { getArea, getLength } from 'ol/sphere';
 import XYZ from 'ol/source/XYZ';
 import { Zoom } from 'ol/control';
+import { fromLonLat, toLonLat } from 'ol/proj';
 import 'ol/ol.css';
 import type { Measurement } from '../pages/Index';
+import LocationSearch from './LocationSearch';
+import GlobeLoader from './GlobeLoader';
 
 interface MapProps {
   isDrawing: boolean;
@@ -23,43 +26,67 @@ const MapComponent = ({ isDrawing, onMeasurementComplete }: MapProps) => {
   const mapInstance = useRef<Map | null>(null);
   const drawInteraction = useRef<Draw | null>(null);
   const vectorSource = useRef(new VectorSource());
+  const [showLoader, setShowLoader] = useState(true);
+  const [currentLocation, setCurrentLocation] = useState<string>('');
 
   useEffect(() => {
-    if (!mapRef.current || mapInstance.current) return;
+    if (!mapRef.current || mapInstance.current || showLoader) return;
 
-    // Initialize map
+    // Initialize map with dark styling
     const vectorLayer = new VectorLayer({
       source: vectorSource.current,
+      style: {
+        'stroke-color': '#00ff88',
+        'stroke-width': 3,
+        'fill-color': 'rgba(0, 255, 136, 0.1)',
+      },
     });
 
-    // Add OSM property boundaries layer
+    // Dark styled base map
+    const darkBaseLayer = new TileLayer({
+      source: new XYZ({
+        url: 'https://cartodb-basemaps-{a-c}.global.ssl.fastly.net/dark_all/{z}/{x}/{y}.png',
+        attributions: ['© OpenStreetMap contributors', '© CartoDB'],
+      }),
+    });
+
+    // Enhanced property boundaries with better visibility
     const osmParcelLayer = new TileLayer({
       source: new XYZ({
         url: 'https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png',
         attributions: ['© OpenStreetMap contributors'],
       }),
-      opacity: 0.7,
+      opacity: 0.3,
     });
 
     const map = new Map({
       target: mapRef.current,
       layers: [
-        new TileLayer({
-          source: new OSM(),
-        }),
+        darkBaseLayer,
         osmParcelLayer,
         vectorLayer,
       ],
       view: new View({
-        center: [0, 0],
+        center: fromLonLat([0, 20]),
         zoom: 2,
+        minZoom: 2,
+        maxZoom: 20,
       }),
       controls: [
         new Zoom({
-          className: 'absolute bottom-16 right-4',
+          className: 'absolute bottom-20 right-4 bg-black/80 backdrop-blur-sm',
         }),
       ],
     });
+
+    // Add smooth zoom animation from globe view
+    setTimeout(() => {
+      map.getView().animate({
+        center: fromLonLat([0, 20]),
+        zoom: 3,
+        duration: 2000,
+      });
+    }, 100);
 
     mapInstance.current = map;
 
@@ -68,7 +95,20 @@ const MapComponent = ({ isDrawing, onMeasurementComplete }: MapProps) => {
         mapInstance.current.dispose();
       }
     };
-  }, []);
+  }, [showLoader]);
+
+  // Handle location search
+  const handleLocationSelect = (coordinates: [number, number], placeName: string) => {
+    if (!mapInstance.current) return;
+    
+    setCurrentLocation(placeName);
+    
+    mapInstance.current.getView().animate({
+      center: fromLonLat(coordinates),
+      zoom: 16,
+      duration: 1500,
+    });
+  };
 
   useEffect(() => {
     if (!mapInstance.current) return;
@@ -78,6 +118,11 @@ const MapComponent = ({ isDrawing, onMeasurementComplete }: MapProps) => {
       drawInteraction.current = new Draw({
         source: vectorSource.current,
         type: 'Polygon',
+        style: {
+          'stroke-color': '#00ff88',
+          'stroke-width': 2,
+          'fill-color': 'rgba(0, 255, 136, 0.1)',
+        },
       });
 
       drawInteraction.current.on('drawend', (event) => {
@@ -89,13 +134,22 @@ const MapComponent = ({ isDrawing, onMeasurementComplete }: MapProps) => {
         // Calculate perimeter in meters
         const perimeter = getLength(geometry);
 
+        // Get center point for additional location info
+        const center = geometry.getInteriorPoint().getCoordinates();
+        const lonLatCenter = toLonLat(center);
+
         // Convert coordinates to array format expected by the application
-        const coordinates = geometry.getCoordinates()[0].map(coord => [coord[0], coord[1]]);
+        const coordinates = geometry.getCoordinates()[0].map(coord => {
+          const lonLat = toLonLat(coord);
+          return [lonLat[0], lonLat[1]];
+        });
 
         onMeasurementComplete({
           area,
           perimeter,
           coordinates,
+          centerPoint: lonLatCenter,
+          location: currentLocation,
         });
 
         // Remove draw interaction after completion
@@ -119,16 +173,26 @@ const MapComponent = ({ isDrawing, onMeasurementComplete }: MapProps) => {
         mapInstance.current.removeInteraction(drawInteraction.current);
       }
     };
-  }, [isDrawing, onMeasurementComplete]);
+  }, [isDrawing, onMeasurementComplete, currentLocation]);
 
   return (
-    <div className="relative w-full h-full">
+    <div className="relative w-full h-full bg-gradient-to-br from-gray-900 via-black to-blue-900">
+      {showLoader && <GlobeLoader onComplete={() => setShowLoader(false)} />}
+      
       <div ref={mapRef} className="w-full h-full" />
-      {!isDrawing && (
-        <div className="absolute top-4 left-4 right-4 bg-white p-4 rounded-lg shadow text-center">
-          <p className="text-gray-600">
-            Click "Start Measuring" to begin drawing a polygon on the map. Property boundaries are shown as an overlay.
+      
+      {!showLoader && <LocationSearch onLocationSelect={handleLocationSelect} />}
+      
+      {!isDrawing && !showLoader && (
+        <div className="absolute bottom-6 left-6 right-6 bg-black/80 backdrop-blur-sm p-4 rounded-lg shadow-lg border border-gray-700">
+          <p className="text-gray-300 text-center">
+            🌍 Search for any location above, then click "Start Measuring" to draw a polygon and analyze the area
           </p>
+          {currentLocation && (
+            <p className="text-blue-400 text-sm text-center mt-2">
+              📍 Current location: {currentLocation}
+            </p>
+          )}
         </div>
       )}
     </div>
