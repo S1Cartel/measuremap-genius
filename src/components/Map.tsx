@@ -7,7 +7,7 @@ import VectorLayer from 'ol/layer/Vector';
 import OSM from 'ol/source/OSM';
 import VectorSource from 'ol/source/Vector';
 import { Draw } from 'ol/interaction';
-import { Polygon } from 'ol/geom';
+import { Polygon, Circle, LineString } from 'ol/geom';
 import { getArea, getLength } from 'ol/sphere';
 import XYZ from 'ol/source/XYZ';
 import { Zoom } from 'ol/control';
@@ -20,9 +20,12 @@ import GlobeLoader from './GlobeLoader';
 interface MapProps {
   isDrawing: boolean;
   onMeasurementComplete: (measurement: Measurement) => void;
+  drawingMode: 'polygon' | 'circle' | 'line';
+  onClearAll: () => void;
+  shouldClear: boolean;
 }
 
-const MapComponent = ({ isDrawing, onMeasurementComplete }: MapProps) => {
+const MapComponent = ({ isDrawing, onMeasurementComplete, drawingMode, onClearAll, shouldClear }: MapProps) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<Map | null>(null);
   const drawInteraction = useRef<Draw | null>(null);
@@ -33,17 +36,15 @@ const MapComponent = ({ isDrawing, onMeasurementComplete }: MapProps) => {
   useEffect(() => {
     if (!mapRef.current || mapInstance.current || showLoader) return;
 
-    // Initialize map with dark styling
     const vectorLayer = new VectorLayer({
       source: vectorSource.current,
       style: {
-        'stroke-color': '#00ff88',
+        'stroke-color': '#a855f7',
         'stroke-width': 3,
-        'fill-color': 'rgba(0, 255, 136, 0.1)',
+        'fill-color': 'rgba(168, 85, 247, 0.1)',
       },
     });
 
-    // Dark styled base map
     const darkBaseLayer = new TileLayer({
       source: new XYZ({
         url: 'https://cartodb-basemaps-{a-c}.global.ssl.fastly.net/dark_all/{z}/{x}/{y}.png',
@@ -51,13 +52,12 @@ const MapComponent = ({ isDrawing, onMeasurementComplete }: MapProps) => {
       }),
     });
 
-    // Enhanced property boundaries with better visibility
     const osmParcelLayer = new TileLayer({
       source: new XYZ({
         url: 'https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png',
         attributions: ['© OpenStreetMap contributors'],
       }),
-      opacity: 0.3,
+      opacity: 0.2,
     });
 
     const map = new Map({
@@ -75,12 +75,11 @@ const MapComponent = ({ isDrawing, onMeasurementComplete }: MapProps) => {
       }),
       controls: [
         new Zoom({
-          className: 'absolute bottom-20 right-4 bg-black/80 backdrop-blur-sm',
+          className: 'absolute bottom-32 right-4 bg-black/80 backdrop-blur-sm rounded-xl',
         }),
       ],
     });
 
-    // Add smooth zoom animation from globe view
     setTimeout(() => {
       map.getView().animate({
         center: fromLonLat([0, 20]),
@@ -98,7 +97,14 @@ const MapComponent = ({ isDrawing, onMeasurementComplete }: MapProps) => {
     };
   }, [showLoader]);
 
-  // Handle location search
+  // Clear all features when requested
+  useEffect(() => {
+    if (shouldClear && vectorSource.current) {
+      vectorSource.current.clear();
+      onClearAll();
+    }
+  }, [shouldClear, onClearAll]);
+
   const handleLocationSelect = (coordinates: [number, number], placeName: string) => {
     if (!mapInstance.current) return;
     
@@ -115,45 +121,79 @@ const MapComponent = ({ isDrawing, onMeasurementComplete }: MapProps) => {
     if (!mapInstance.current) return;
 
     if (isDrawing) {
-      // Add draw interaction
+      const drawType = drawingMode === 'polygon' ? 'Polygon' : 
+                      drawingMode === 'circle' ? 'Circle' : 'LineString';
+      
       drawInteraction.current = new Draw({
         source: vectorSource.current,
-        type: 'Polygon',
+        type: drawType as any,
         style: {
-          'stroke-color': '#00ff88',
+          'stroke-color': drawingMode === 'polygon' ? '#a855f7' : 
+                         drawingMode === 'circle' ? '#10b981' : '#f59e0b',
           'stroke-width': 2,
-          'fill-color': 'rgba(0, 255, 136, 0.1)',
+          'fill-color': drawingMode === 'polygon' ? 'rgba(168, 85, 247, 0.1)' : 
+                       drawingMode === 'circle' ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
         },
       });
 
       drawInteraction.current.on('drawend', (event) => {
         const feature = event.feature;
-        const geometry = feature.getGeometry() as Polygon;
+        const geometry = feature.getGeometry();
         
-        // Calculate area in square meters
-        const area = getArea(geometry);
-        // Calculate perimeter in meters
-        const perimeter = getLength(geometry);
+        let measurement: Measurement;
+        
+        if (drawingMode === 'polygon' && geometry instanceof Polygon) {
+          const area = getArea(geometry);
+          const perimeter = getLength(geometry);
+          const center = geometry.getInteriorPoint().getCoordinates();
+          const lonLatCenter = toLonLat(center);
+          const coordinates = geometry.getCoordinates()[0].map(coord => {
+            const lonLat = toLonLat(coord);
+            return [lonLat[0], lonLat[1]];
+          });
 
-        // Get center point for additional location info
-        const center = geometry.getInteriorPoint().getCoordinates();
-        const lonLatCenter = toLonLat(center);
+          measurement = {
+            type: 'polygon',
+            area,
+            perimeter,
+            coordinates,
+            centerPoint: [lonLatCenter[0], lonLatCenter[1]] as [number, number],
+            location: currentLocation,
+          };
+        } else if (drawingMode === 'circle' && geometry instanceof Circle) {
+          const center = geometry.getCenter();
+          const radius = geometry.getRadius();
+          const area = Math.PI * radius * radius;
+          const perimeter = 2 * Math.PI * radius;
+          const lonLatCenter = toLonLat(center);
 
-        // Convert coordinates to array format expected by the application
-        const coordinates = geometry.getCoordinates()[0].map(coord => {
-          const lonLat = toLonLat(coord);
-          return [lonLat[0], lonLat[1]];
-        });
+          measurement = {
+            type: 'circle',
+            area,
+            perimeter,
+            radius,
+            centerPoint: [lonLatCenter[0], lonLatCenter[1]] as [number, number],
+            location: currentLocation,
+          };
+        } else if (drawingMode === 'line' && geometry instanceof LineString) {
+          const distance = getLength(geometry);
+          const coordinates = geometry.getCoordinates().map(coord => {
+            const lonLat = toLonLat(coord);
+            return [lonLat[0], lonLat[1]];
+          });
 
-        onMeasurementComplete({
-          area,
-          perimeter,
-          coordinates,
-          centerPoint: [lonLatCenter[0], lonLatCenter[1]] as [number, number],
-          location: currentLocation,
-        });
+          measurement = {
+            type: 'line',
+            distance,
+            coordinates,
+            location: currentLocation,
+          };
+        } else {
+          return;
+        }
 
-        // Remove draw interaction after completion
+        onMeasurementComplete(measurement);
+
         if (mapInstance.current && drawInteraction.current) {
           mapInstance.current.removeInteraction(drawInteraction.current);
           drawInteraction.current = null;
@@ -162,7 +202,6 @@ const MapComponent = ({ isDrawing, onMeasurementComplete }: MapProps) => {
 
       mapInstance.current.addInteraction(drawInteraction.current);
     } else {
-      // Remove draw interaction when not drawing
       if (drawInteraction.current) {
         mapInstance.current.removeInteraction(drawInteraction.current);
         drawInteraction.current = null;
@@ -174,10 +213,10 @@ const MapComponent = ({ isDrawing, onMeasurementComplete }: MapProps) => {
         mapInstance.current.removeInteraction(drawInteraction.current);
       }
     };
-  }, [isDrawing, onMeasurementComplete, currentLocation]);
+  }, [isDrawing, onMeasurementComplete, currentLocation, drawingMode]);
 
   return (
-    <div className="relative w-full h-full bg-gradient-to-br from-gray-900 via-black to-blue-900">
+    <div className="relative w-full h-full bg-gradient-to-br from-gray-900 via-black to-violet-900">
       {showLoader && <GlobeLoader onComplete={() => setShowLoader(false)} />}
       
       <div ref={mapRef} className="w-full h-full" />
@@ -185,12 +224,12 @@ const MapComponent = ({ isDrawing, onMeasurementComplete }: MapProps) => {
       {!showLoader && <LocationSearch onLocationSelect={handleLocationSelect} />}
       
       {!isDrawing && !showLoader && (
-        <div className="absolute bottom-6 left-6 right-6 bg-black/80 backdrop-blur-sm p-4 rounded-lg shadow-lg border border-gray-700">
+        <div className="absolute bottom-24 left-8 right-8 bg-black/90 backdrop-blur-md p-4 rounded-2xl shadow-2xl border border-violet-500/30">
           <p className="text-gray-300 text-center">
-            🌍 Search for any location above, then click "Start Measuring" to draw a polygon and analyze the area
+            🌍 Search for any location above, then click "Start Measuring" to analyze areas, distances, or draw circles
           </p>
           {currentLocation && (
-            <p className="text-blue-400 text-sm text-center mt-2">
+            <p className="text-violet-400 text-sm text-center mt-2">
               📍 Current location: {currentLocation}
             </p>
           )}
