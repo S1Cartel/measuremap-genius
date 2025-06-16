@@ -1,3 +1,4 @@
+
 import { useEffect, useRef, useState } from 'react';
 import Map from 'ol/Map';
 import View from 'ol/View';
@@ -148,7 +149,7 @@ const MapComponent = ({ isDrawing, onMeasurementComplete }: MapProps) => {
           area,
           perimeter,
           coordinates,
-          centerPoint: lonLatCenter,
+          centerPoint: [lonLatCenter[0], lonLatCenter[1]] as [number, number],
           location: currentLocation,
         });
 
