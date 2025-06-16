@@ -1,4 +1,3 @@
-
 import { useEffect, useRef, useState } from 'react';
 import Map from 'ol/Map';
 import View from 'ol/View';
@@ -7,15 +6,19 @@ import VectorLayer from 'ol/layer/Vector';
 import OSM from 'ol/source/OSM';
 import VectorSource from 'ol/source/Vector';
 import { Draw } from 'ol/interaction';
-import { Polygon, Circle, LineString } from 'ol/geom';
+import { Polygon, Circle, LineString, Point } from 'ol/geom';
 import { getArea, getLength } from 'ol/sphere';
 import XYZ from 'ol/source/XYZ';
 import { Zoom } from 'ol/control';
 import { fromLonLat, toLonLat } from 'ol/proj';
+import { Feature } from 'ol';
+import { Style, Stroke, Fill, Icon } from 'ol/style';
 import 'ol/ol.css';
 import type { Measurement } from '../pages/Index';
+import type { POI } from './POIService';
 import LocationSearch from './LocationSearch';
 import GlobeLoader from './GlobeLoader';
+import InteractiveMapLegend from './InteractiveMapLegend';
 
 interface MapProps {
   isDrawing: boolean;
@@ -23,15 +26,30 @@ interface MapProps {
   drawingMode: 'polygon' | 'circle' | 'line';
   onClearAll: () => void;
   shouldClear: boolean;
+  generatedPOIs: POI[];
+  areaBoundary: number[][];
+  areaName: string;
 }
 
-const MapComponent = ({ isDrawing, onMeasurementComplete, drawingMode, onClearAll, shouldClear }: MapProps) => {
+const MapComponent = ({ 
+  isDrawing, 
+  onMeasurementComplete, 
+  drawingMode, 
+  onClearAll, 
+  shouldClear,
+  generatedPOIs,
+  areaBoundary,
+  areaName
+}: MapProps) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<Map | null>(null);
   const drawInteraction = useRef<Draw | null>(null);
   const vectorSource = useRef(new VectorSource());
+  const poiSource = useRef(new VectorSource());
+  const boundarySource = useRef(new VectorSource());
   const [showLoader, setShowLoader] = useState(true);
   const [currentLocation, setCurrentLocation] = useState<string>('');
+  const [visibleCategories, setVisibleCategories] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!mapRef.current || mapInstance.current || showLoader) return;
@@ -43,6 +61,38 @@ const MapComponent = ({ isDrawing, onMeasurementComplete, drawingMode, onClearAl
         'stroke-width': 3,
         'fill-color': 'rgba(168, 85, 247, 0.1)',
       },
+    });
+
+    const poiLayer = new VectorLayer({
+      source: poiSource.current,
+      style: (feature) => {
+        const poi = feature.get('poi') as POI;
+        return new Style({
+          image: new Icon({
+            src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="${poi.color}" stroke="white" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <circle cx="12" cy="12" r="4" fill="white"/>
+              </svg>
+            `)}`,
+            scale: 1,
+            anchor: [0.5, 0.5],
+          }),
+        });
+      },
+    });
+
+    const boundaryLayer = new VectorLayer({
+      source: boundarySource.current,
+      style: new Style({
+        stroke: new Stroke({
+          color: '#8b5cf6',
+          width: 3,
+        }),
+        fill: new Fill({
+          color: 'rgba(139, 92, 246, 0.1)',
+        }),
+      }),
     });
 
     const darkBaseLayer = new TileLayer({
@@ -65,7 +115,9 @@ const MapComponent = ({ isDrawing, onMeasurementComplete, drawingMode, onClearAl
       layers: [
         darkBaseLayer,
         osmParcelLayer,
+        boundaryLayer,
         vectorLayer,
+        poiLayer,
       ],
       view: new View({
         center: fromLonLat([0, 20]),
@@ -96,6 +148,52 @@ const MapComponent = ({ isDrawing, onMeasurementComplete, drawingMode, onClearAl
       }
     };
   }, [showLoader]);
+
+  // Handle generated POIs
+  useEffect(() => {
+    if (!poiSource.current) return;
+
+    poiSource.current.clear();
+    
+    generatedPOIs.forEach(poi => {
+      if (visibleCategories.size === 0 || visibleCategories.has(poi.category)) {
+        const point = new Point(fromLonLat(poi.coordinates));
+        const feature = new Feature({
+          geometry: point,
+          poi: poi,
+        });
+        feature.set('name', poi.name);
+        feature.set('category', poi.category);
+        poiSource.current.addFeature(feature);
+      }
+    });
+  }, [generatedPOIs, visibleCategories]);
+
+  // Handle area boundary
+  useEffect(() => {
+    if (!boundarySource.current || !mapInstance.current) return;
+
+    boundarySource.current.clear();
+    
+    if (areaBoundary.length > 0) {
+      const coordinates = areaBoundary.map(coord => fromLonLat(coord));
+      const polygon = new Polygon([coordinates]);
+      const feature = new Feature(polygon);
+      boundarySource.current.addFeature(feature);
+      
+      // Fit map to boundary
+      const extent = polygon.getExtent();
+      mapInstance.current.getView().fit(extent, { padding: [50, 50, 50, 50] });
+    }
+  }, [areaBoundary]);
+
+  // Initialize visible categories when POIs are loaded
+  useEffect(() => {
+    if (generatedPOIs.length > 0 && visibleCategories.size === 0) {
+      const categories = new Set(generatedPOIs.map(poi => poi.category));
+      setVisibleCategories(categories);
+    }
+  }, [generatedPOIs]);
 
   // Clear all features when requested
   useEffect(() => {
@@ -215,6 +313,18 @@ const MapComponent = ({ isDrawing, onMeasurementComplete, drawingMode, onClearAl
     };
   }, [isDrawing, onMeasurementComplete, currentLocation, drawingMode]);
 
+  const handleToggleCategory = (category: string, visible: boolean) => {
+    setVisibleCategories(prev => {
+      const newSet = new Set(prev);
+      if (visible) {
+        newSet.add(category);
+      } else {
+        newSet.delete(category);
+      }
+      return newSet;
+    });
+  };
+
   return (
     <div className="relative w-full h-full bg-gradient-to-br from-gray-900 via-black to-violet-900">
       {showLoader && <GlobeLoader onComplete={() => setShowLoader(false)} />}
@@ -223,7 +333,15 @@ const MapComponent = ({ isDrawing, onMeasurementComplete, drawingMode, onClearAl
       
       {!showLoader && <LocationSearch onLocationSelect={handleLocationSelect} />}
       
-      {!isDrawing && !showLoader && (
+      {generatedPOIs.length > 0 && (
+        <InteractiveMapLegend
+          pois={generatedPOIs}
+          onToggleCategory={handleToggleCategory}
+          visibleCategories={visibleCategories}
+        />
+      )}
+      
+      {!isDrawing && !showLoader && !areaName && (
         <div className="absolute bottom-24 left-8 right-8 bg-black/90 backdrop-blur-md p-4 rounded-2xl shadow-2xl border border-violet-500/30">
           <p className="text-gray-300 text-center">
             🌍 Search for any location above, then click "Start Measuring" to analyze areas, distances, or draw circles

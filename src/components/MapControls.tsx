@@ -1,6 +1,6 @@
 
 import { Button } from '@/components/ui/button';
-import { MapPin, X, Zap, History, Trash2, Download, Square, Circle, Route } from 'lucide-react';
+import { MapPin, X, Zap, History, Trash2, Square, Circle, Route, Map } from 'lucide-react';
 import { useState } from 'react';
 
 interface MapControlsProps {
@@ -9,6 +9,7 @@ interface MapControlsProps {
   onCancelDrawing: () => void;
   onClearAll: () => void;
   onToggleHistory: () => void;
+  onToggleMapGenerator: () => void;
   drawingMode: 'polygon' | 'circle' | 'line';
   onDrawingModeChange: (mode: 'polygon' | 'circle' | 'line') => void;
 }
@@ -19,6 +20,7 @@ const MapControls = ({
   onCancelDrawing, 
   onClearAll,
   onToggleHistory,
+  onToggleMapGenerator,
   drawingMode,
   onDrawingModeChange
 }: MapControlsProps) => {
@@ -78,6 +80,12 @@ const MapControls = ({
             >
               <Zap className="mr-2 h-4 w-4" />
               Start Measuring
+            </Button>
+            <Button 
+              onClick={onToggleMapGenerator}
+              className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white border border-cyan-500/50 rounded-xl"
+            >
+              <Map className="h-4 w-4" />
             </Button>
             <Button 
               onClick={onToggleHistory}
