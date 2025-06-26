@@ -251,11 +251,12 @@ const MapComponent = ({
           });
 
           measurement = {
+            id: crypto.randomUUID(),
             type: 'polygon',
             area,
             perimeter,
             coordinates,
-            centerPoint: [lonLatCenter[0], lonLatCenter[1]] as [number, number],
+            center_point: [lonLatCenter[0], lonLatCenter[1]] as [number, number],
             location: currentLocation,
           };
         } else if (drawingMode === 'circle' && geometry instanceof Circle) {
@@ -266,11 +267,12 @@ const MapComponent = ({
           const lonLatCenter = toLonLat(center);
 
           measurement = {
+            id: crypto.randomUUID(),
             type: 'circle',
             area,
             perimeter,
             radius,
-            centerPoint: [lonLatCenter[0], lonLatCenter[1]] as [number, number],
+            center_point: [lonLatCenter[0], lonLatCenter[1]] as [number, number],
             location: currentLocation,
           };
         } else if (drawingMode === 'line' && geometry instanceof LineString) {
@@ -281,6 +283,7 @@ const MapComponent = ({
           });
 
           measurement = {
+            id: crypto.randomUUID(),
             type: 'line',
             distance,
             coordinates,

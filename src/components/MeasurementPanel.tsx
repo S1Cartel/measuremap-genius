@@ -62,15 +62,15 @@ const MeasurementPanel = ({ measurement }: MeasurementPanelProps) => {
       doc.text(`Distance: ${((measurement.distance! / 1000) * 0.621371).toFixed(3)} miles`, 25, 115);
     }
     
-    if (measurement.centerPoint) {
+    if (measurement.center_point) {
       doc.setFontSize(16);
       doc.setTextColor(139, 69, 19);
       doc.text('🎯 Center Coordinates', 20, 180);
       
       doc.setFontSize(12);
       doc.setTextColor(0, 0, 0);
-      doc.text(`Latitude: ${measurement.centerPoint[1].toFixed(6)}°`, 25, 195);
-      doc.text(`Longitude: ${measurement.centerPoint[0].toFixed(6)}°`, 25, 205);
+      doc.text(`Latitude: ${measurement.center_point[1].toFixed(6)}°`, 25, 195);
+      doc.text(`Longitude: ${measurement.center_point[0].toFixed(6)}°`, 25, 205);
     }
     
     doc.setFontSize(8);
@@ -195,15 +195,15 @@ const MeasurementPanel = ({ measurement }: MeasurementPanelProps) => {
               </div>
             )}
 
-            {measurement.centerPoint && (
+            {measurement.center_point && (
               <div className="bg-gradient-to-br from-purple-900/50 to-pink-900/50 p-4 rounded-xl border border-purple-700/50">
                 <h3 className="text-sm font-medium text-gray-300 mb-2">🎯 Center Coordinates</h3>
                 <div className="space-y-1">
                   <p className="text-sm text-purple-300">
-                    Lat: {measurement.centerPoint[1].toFixed(6)}°
+                    Lat: {measurement.center_point[1].toFixed(6)}°
                   </p>
                   <p className="text-sm text-purple-300">
-                    Lng: {measurement.centerPoint[0].toFixed(6)}°
+                    Lng: {measurement.center_point[0].toFixed(6)}°
                   </p>
                 </div>
               </div>

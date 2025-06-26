@@ -32,7 +32,7 @@ const ShareDialog = ({ open, onOpenChange, projectId, projectName }: ShareDialog
 
     setLoading(true);
     try {
-      const expiresAt = expiresIn ? new Date(Date.now() + expiresIn * 24 * 60 * 60 * 1000) : null;
+      const expiresAt = expiresIn ? new Date(Date.now() + expiresIn * 24 * 60 * 60 * 1000).toISOString() : null;
 
       const { data, error } = await supabase
         .from('shared_projects')

@@ -1,14 +1,9 @@
+
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
-import { MapContainer, TileLayer, FeatureGroup, Polygon, Circle, useMap, Polyline } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet-draw';
-import 'leaflet/dist/leaflet.css';
-import 'leaflet-draw/dist/leaflet.draw.css';
-import { EditControl } from 'react-leaflet-draw';
+import MapComponent from '@/components/Map';
 import { generatePOIsForArea, fetchAreaBoundary } from '@/components/POIService';
-import InteractiveMapLegend from '@/components/InteractiveMapLegend';
 import MapControls from '@/components/MapControls';
 import MeasurementHistory from '@/components/MeasurementHistory';
 import Navbar from '@/components/enhanced/Navbar';
@@ -44,18 +39,15 @@ const Index = () => {
   const [currentMeasurement, setCurrentMeasurement] = useState<Measurement | null>(null);
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
   const [drawingMode, setDrawingMode] = useState<'polygon' | 'circle' | 'line'>('polygon');
-  const [mapCenter, setMapCenter] = useState([51.505, -0.09]); // Default London
-  const [mapZoom, setMapZoom] = useState(13);
   const [areaName, setAreaName] = useState('London');
   const [areaBoundary, setAreaBoundary] = useState<number[][]>([]);
   const [pois, setPois] = useState([]);
-  const [visibleCategories, setVisibleCategories] = useState(new Set<string>());
   const [showHistory, setShowHistory] = useState(false);
-  const [showMapGenerator, setShowMapGenerator] = useState(false);
   const [selectedProject, setSelectedProject] = useState<any>(null);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [analysisData, setAnalysisData] = useState<any>(null);
   const [generatingReport, setGeneratingReport] = useState(false);
+  const [shouldClear, setShouldClear] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -75,136 +67,24 @@ const Index = () => {
     loadData();
   }, [areaName]);
 
-  const handleAreaNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setAreaName(event.target.value);
-  };
-
-  const handleSearchArea = async () => {
-    const boundary = await fetchAreaBoundary(areaName);
-    setAreaBoundary(boundary);
-    
-    if (boundary.length > 0) {
-      // Calculate the center of the bounding box
-      const latitudes = boundary.map(coord => coord[1]);
-      const longitudes = boundary.map(coord => coord[0]);
-      const avgLat = latitudes.reduce((a, b) => a + b, 0) / latitudes.length;
-      const avgLng = longitudes.reduce((a, b) => a + b, 0) / longitudes.length;
-      
-      setMapCenter([avgLat, avgLng]);
-      setMapZoom(13);
-    }
-    
-    const generatedPOIs = await generatePOIsForArea(areaName, boundary);
-    setPois(generatedPOIs);
-  };
-
-  const handleCreate = (e: any) => {
+  const handleMeasurementComplete = (measurement: Measurement) => {
+    setCurrentMeasurement(measurement);
+    setMeasurements(prev => [...prev, measurement]);
     setIsDrawing(false);
-    
-    let newMeasurement: Measurement;
-    
-    if (e.layerType === 'polygon') {
-      const latlngs = e.layer.getLatLngs()[0].map((latlng: any) => [latlng.lng, latlng.lat]);
-      const area = L.GeometryUtil.geodesicArea(e.layer.getLatLngs()[0]);
-      const perimeter = calculatePolygonPerimeter(latlngs);
-      
-      newMeasurement = {
-        id: crypto.randomUUID(),
-        type: 'polygon',
-        coordinates: latlngs,
-        area: area,
-        perimeter: perimeter
-      };
-    } else if (e.layerType === 'circle') {
-      const center = [e.layer.getLatLng().lng, e.layer.getLatLng().lat];
-      const radius = e.layer.getRadius();
-      const area = Math.PI * radius * radius;
-      
-      newMeasurement = {
-        id: crypto.randomUUID(),
-        type: 'circle',
-        coordinates: [center],
-        radius: radius,
-        area: area,
-        center_point: center
-      };
-    } else if (e.layerType === 'polyline') {
-      const latlngs = e.layer.getLatLngs().map((latlng: any) => [latlng.lng, latlng.lat]);
-      const distance = calculateLineDistance(latlngs);
-      
-      newMeasurement = {
-        id: crypto.randomUUID(),
-        type: 'line',
-        coordinates: latlngs,
-        distance: distance
-      };
-    } else {
-      console.warn('Unsupported layer type:', e.layerType);
-      return;
-    }
-    
-    setCurrentMeasurement(newMeasurement);
-    setMeasurements(prevMeasurements => [...prevMeasurements, newMeasurement]);
   };
 
-  const handleUpdate = (e: any) => {
-    console.log('EDITED', e);
-    // Handle edit event
-  };
-
-  const handleDelete = (e: any) => {
-    console.log('DELETED', e);
-    // Handle delete event
-  };
-
-  const handleDrawing = () => {
+  const handleStartDrawing = () => {
     setIsDrawing(true);
   };
 
   const handleCancelDrawing = () => {
     setIsDrawing(false);
-    setCurrentMeasurement(null);
   };
 
   const handleClearAll = () => {
     setMeasurements([]);
     setCurrentMeasurement(null);
-  };
-
-  const handleToggleCategory = (category: string, visible: boolean) => {
-    const newVisibleCategories = new Set(visibleCategories);
-    if (visible) {
-      newVisibleCategories.add(category);
-    } else {
-      newVisibleCategories.delete(category);
-    }
-    setVisibleCategories(newVisibleCategories);
-  };
-
-  const calculatePolygonPerimeter = (latlngs: number[][]): number => {
-    let perimeter = 0;
-    for (let i = 0; i < latlngs.length - 1; i++) {
-      const point1 = L.latLng(latlngs[i][1], latlngs[i][0]);
-      const point2 = L.latLng(latlngs[i + 1][1], latlngs[i + 1][0]);
-      perimeter += point1.distanceTo(point2);
-    }
-    
-    // Close the polygon
-    const lastPoint = L.latLng(latlngs[latlngs.length - 1][1], latlngs[latlngs.length - 1][0]);
-    const firstPoint = L.latLng(latlngs[0][1], latlngs[0][0]);
-    perimeter += lastPoint.distanceTo(firstPoint);
-    
-    return perimeter;
-  };
-
-  const calculateLineDistance = (latlngs: number[][]): number => {
-    let distance = 0;
-    for (let i = 0; i < latlngs.length - 1; i++) {
-      const point1 = L.latLng(latlngs[i][1], latlngs[i][0]);
-      const point2 = L.latLng(latlngs[i + 1][1], latlngs[i + 1][0]);
-      distance += point1.distanceTo(point2);
-    }
-    return distance;
+    setShouldClear(false);
   };
 
   const handleSelectMeasurement = (measurement: Measurement) => {
@@ -212,8 +92,8 @@ const Index = () => {
   };
 
   const handleDeleteMeasurement = (index: number) => {
-    setMeasurements(prevMeasurements => {
-      const newMeasurements = [...prevMeasurements];
+    setMeasurements(prev => {
+      const newMeasurements = [...prev];
       newMeasurements.splice(index, 1);
       return newMeasurements;
     });
@@ -222,10 +102,6 @@ const Index = () => {
 
   const handleToggleHistory = () => {
     setShowHistory(!showHistory);
-  };
-
-  const handleToggleMapGenerator = () => {
-    setShowMapGenerator(!showMapGenerator);
   };
 
   const handleDrawingModeChange = (mode: 'polygon' | 'circle' | 'line') => {
@@ -369,99 +245,24 @@ const Index = () => {
 
         {/* Main Map Area */}
         <div className="flex-1 relative">
-          <MapContainer 
-            center={mapCenter} 
-            zoom={mapZoom} 
-            style={{ height: '100%', width: '100%' }}
-            className="z-0"
-          >
-            <TileLayer
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            />
-            
-            {areaBoundary.length > 0 && (
-              <Polygon positions={areaBoundary.map(coord => [coord[1], coord[0]])} color="purple" />
-            )}
-            
-            {pois.map(poi => {
-              if (!visibleCategories.has(poi.category)) {
-                return null;
-              }
-              
-              return (
-                <Circle
-                  key={poi.id}
-                  center={[poi.coordinates[1], poi.coordinates[0]]}
-                  radius={20}
-                  fillColor={poi.color}
-                  fillOpacity={0.5}
-                  stroke={false}
-                />
-              );
-            })}
-            
-            {measurements.map(measurement => {
-              if (measurement.type === 'polygon') {
-                return (
-                  <Polygon 
-                    key={measurement.id}
-                    positions={measurement.coordinates.map(coord => [coord[1], coord[0]])}
-                    color="violet"
-                  />
-                );
-              } else if (measurement.type === 'circle') {
-                return (
-                  <Circle
-                    key={measurement.id}
-                    center={[measurement.coordinates[0][1], measurement.coordinates[0][0]]}
-                    radius={measurement.radius || 100}
-                    color="teal"
-                  />
-                );
-              } else if (measurement.type === 'line') {
-                return (
-                  <Polyline
-                    key={measurement.id}
-                    positions={measurement.coordinates.map(coord => [coord[1], coord[0]])}
-                    color="orange"
-                  />
-                );
-              }
-              return null;
-            })}
-
-            <FeatureGroup>
-              <EditControl
-                position="topright"
-                draw={{
-                  polygon: drawingMode === 'polygon',
-                  circle: drawingMode === 'circle',
-                  polyline: drawingMode === 'line',
-                  rectangle: false,
-                  marker: false,
-                  circlemarker: false
-                }}
-                onCreated={handleCreate}
-                onEdited={handleUpdate}
-                onDeleted={handleDelete}
-              />
-            </FeatureGroup>
-          </MapContainer>
-          
-          <InteractiveMapLegend
-            pois={pois}
-            onToggleCategory={handleToggleCategory}
-            visibleCategories={visibleCategories}
+          <MapComponent
+            isDrawing={isDrawing}
+            onMeasurementComplete={handleMeasurementComplete}
+            drawingMode={drawingMode}
+            onClearAll={handleClearAll}
+            shouldClear={shouldClear}
+            generatedPOIs={pois}
+            areaBoundary={areaBoundary}
+            areaName={areaName}
           />
           
           <MapControls
             isDrawing={isDrawing}
-            onStartDrawing={handleDrawing}
+            onStartDrawing={handleStartDrawing}
             onCancelDrawing={handleCancelDrawing}
-            onClearAll={handleClearAll}
+            onClearAll={() => setShouldClear(true)}
             onToggleHistory={handleToggleHistory}
-            onToggleMapGenerator={handleToggleMapGenerator}
+            onToggleMapGenerator={() => {}}
             drawingMode={drawingMode}
             onDrawingModeChange={handleDrawingModeChange}
           />
