@@ -16,6 +16,7 @@ import { Style, Stroke, Fill, Icon } from 'ol/style';
 import 'ol/ol.css';
 import type { Measurement } from '../pages/Index';
 import type { POI } from './POIService';
+import { generatePOIsForArea } from './POIService';
 import LocationSearch from './LocationSearch';
 import GlobeLoader from './GlobeLoader';
 import InteractiveMapLegend from './InteractiveMapLegend';
@@ -29,6 +30,7 @@ interface MapProps {
   generatedPOIs: POI[];
   areaBoundary: number[][];
   areaName: string;
+  onPOIsGenerated: (pois: POI[]) => void;
 }
 
 const MapComponent = ({ 
@@ -39,7 +41,8 @@ const MapComponent = ({
   shouldClear,
   generatedPOIs,
   areaBoundary,
-  areaName
+  areaName,
+  onPOIsGenerated
 }: MapProps) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<Map | null>(null);
@@ -203,7 +206,7 @@ const MapComponent = ({
     }
   }, [shouldClear, onClearAll]);
 
-  const handleLocationSelect = (coordinates: [number, number], placeName: string) => {
+  const handleLocationSelect = async (coordinates: [number, number], placeName: string) => {
     if (!mapInstance.current) return;
     
     setCurrentLocation(placeName);
@@ -213,6 +216,15 @@ const MapComponent = ({
       zoom: 16,
       duration: 1500,
     });
+
+    // Generate POIs for the searched location
+    try {
+      const locationName = placeName.split(',')[0]; // Get the first part of the location name
+      const generatedPOIs = await generatePOIsForArea(locationName, []);
+      onPOIsGenerated(generatedPOIs);
+    } catch (error) {
+      console.error('Error generating POIs for location:', error);
+    }
   };
 
   useEffect(() => {

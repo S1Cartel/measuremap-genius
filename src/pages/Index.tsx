@@ -11,7 +11,7 @@ import ProjectManager from '@/components/enhanced/ProjectManager';
 import EnhancedMeasurementPanel from '@/components/enhanced/EnhancedMeasurementPanel';
 import ShareDialog from '@/components/enhanced/ShareDialog';
 import { Button } from '@/components/ui/button';
-import { Share2, BarChart3, FileText, Sparkles } from 'lucide-react';
+import { Share2, BarChart3, FileText, Sparkles, LogIn } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
 
@@ -48,12 +48,16 @@ const Index = () => {
   const [analysisData, setAnalysisData] = useState<any>(null);
   const [generatingReport, setGeneratingReport] = useState(false);
   const [shouldClear, setShouldClear] = useState(false);
+  const [isGuest, setIsGuest] = useState(false);
 
+  // Allow guest access - don't redirect to auth immediately
   useEffect(() => {
     if (!authLoading && !user) {
-      navigate('/auth');
+      setIsGuest(true);
+    } else if (user) {
+      setIsGuest(false);
     }
-  }, [user, authLoading, navigate]);
+  }, [user, authLoading]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -108,7 +112,20 @@ const Index = () => {
     setDrawingMode(mode);
   };
 
+  const handlePOIsGenerated = (newPois: any[]) => {
+    setPois(newPois);
+  };
+
   const handleAIAnalysis = async () => {
+    if (!user) {
+      toast({
+        title: "Login Required",
+        description: "Please sign in to use AI analysis features",
+        variant: "destructive"
+      });
+      return;
+    }
+
     if (!currentMeasurement) return;
 
     try {
@@ -137,6 +154,15 @@ const Index = () => {
   };
 
   const generateReport = async () => {
+    if (!user) {
+      toast({
+        title: "Login Required",
+        description: "Please sign in to generate reports",
+        variant: "destructive"
+      });
+      return;
+    }
+
     if (!selectedProject || measurements.length === 0) return;
 
     setGeneratingReport(true);
@@ -184,10 +210,6 @@ const Index = () => {
     );
   }
 
-  if (!user) {
-    return null; // Will redirect to auth
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
       <Navbar />
@@ -195,50 +217,77 @@ const Index = () => {
       <div className="flex h-[calc(100vh-80px)]">
         {/* Left Sidebar */}
         <div className="w-80 p-4 space-y-4 overflow-y-auto">
-          <ProjectManager 
-            selectedProject={selectedProject}
-            onProjectSelect={setSelectedProject}
-          />
-          
-          {selectedProject && (
-            <div className="space-y-2">
+          {isGuest && (
+            <div className="bg-black/60 backdrop-blur-md p-4 rounded-xl border border-violet-500/30">
+              <h3 className="text-lg font-semibold text-white mb-2">Guest Mode</h3>
+              <p className="text-gray-300 text-sm mb-4">
+                You're using GeoMeasure Pro as a guest. Sign in to access advanced features like project management, AI analysis, and report generation.
+              </p>
               <Button
-                onClick={() => setShareDialogOpen(true)}
-                className="w-full bg-gradient-to-r from-cyan-600 to-blue-600"
+                onClick={() => navigate('/auth')}
+                className="w-full bg-gradient-to-r from-violet-600 to-purple-600"
               >
-                <Share2 className="h-4 w-4 mr-2" />
-                Share Project
-              </Button>
-              
-              <Button
-                onClick={handleAIAnalysis}
-                disabled={!currentMeasurement}
-                className="w-full bg-gradient-to-r from-emerald-600 to-teal-600"
-              >
-                <Sparkles className="h-4 w-4 mr-2" />
-                AI Analysis
-              </Button>
-              
-              <Button
-                onClick={generateReport}
-                disabled={measurements.length === 0 || generatingReport}
-                className="w-full bg-gradient-to-r from-amber-600 to-orange-600"
-              >
-                <FileText className="h-4 w-4 mr-2" />
-                {generatingReport ? 'Generating...' : 'Generate Report'}
+                <LogIn className="h-4 w-4 mr-2" />
+                Sign In
               </Button>
             </div>
+          )}
+
+          {user && (
+            <>
+              <ProjectManager 
+                selectedProject={selectedProject}
+                onProjectSelect={setSelectedProject}
+              />
+              
+              {selectedProject && (
+                <div className="space-y-2">
+                  <Button
+                    onClick={() => setShareDialogOpen(true)}
+                    className="w-full bg-gradient-to-r from-cyan-600 to-blue-600"
+                  >
+                    <Share2 className="h-4 w-4 mr-2" />
+                    Share Project
+                  </Button>
+                  
+                  <Button
+                    onClick={handleAIAnalysis}
+                    disabled={!currentMeasurement}
+                    className="w-full bg-gradient-to-r from-emerald-600 to-teal-600"
+                  >
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    AI Analysis
+                  </Button>
+                  
+                  <Button
+                    onClick={generateReport}
+                    disabled={measurements.length === 0 || generatingReport}
+                    className="w-full bg-gradient-to-r from-amber-600 to-orange-600"
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    {generatingReport ? 'Generating...' : 'Generate Report'}
+                  </Button>
+                </div>
+              )}
+            </>
           )}
           
           <EnhancedMeasurementPanel
             measurement={currentMeasurement}
-            projectId={selectedProject?.id || null}
+            projectId={user && selectedProject ? selectedProject.id : null}
             onSave={() => {
-              // Refresh measurements or update UI as needed
-              toast({
-                title: "Measurement Saved",
-                description: "Your measurement has been saved to the project"
-              });
+              if (user) {
+                toast({
+                  title: "Measurement Saved",
+                  description: "Your measurement has been saved to the project"
+                });
+              } else {
+                toast({
+                  title: "Guest Mode",
+                  description: "Sign in to save measurements to projects",
+                  variant: "destructive"
+                });
+              }
             }}
           />
         </div>
@@ -254,6 +303,7 @@ const Index = () => {
             generatedPOIs={pois}
             areaBoundary={areaBoundary}
             areaName={areaName}
+            onPOIsGenerated={handlePOIsGenerated}
           />
           
           <MapControls
@@ -278,7 +328,7 @@ const Index = () => {
         </div>
       </div>
 
-      {selectedProject && (
+      {user && selectedProject && (
         <ShareDialog
           open={shareDialogOpen}
           onOpenChange={setShareDialogOpen}
