@@ -266,12 +266,24 @@ const MapComponent = ({
           const perimeter = 2 * Math.PI * radius;
           const lonLatCenter = toLonLat(center);
 
+          // Generate circle coordinates for the coordinates property
+          const numPoints = 32;
+          const coordinates: number[][] = [];
+          for (let i = 0; i <= numPoints; i++) {
+            const angle = (i / numPoints) * 2 * Math.PI;
+            const x = center[0] + radius * Math.cos(angle);
+            const y = center[1] + radius * Math.sin(angle);
+            const lonLat = toLonLat([x, y]);
+            coordinates.push([lonLat[0], lonLat[1]]);
+          }
+
           measurement = {
             id: crypto.randomUUID(),
             type: 'circle',
             area,
             perimeter,
             radius,
+            coordinates,
             center_point: [lonLatCenter[0], lonLatCenter[1]] as [number, number],
             location: currentLocation,
           };
