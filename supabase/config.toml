@@ -1,1 +1,8 @@
+
 project_id = "nandagcrqikmqqtysvvw"
+
+[functions.ai-land-analysis]
+verify_jwt = true
+
+[functions.generate-report]
+verify_jwt = true
